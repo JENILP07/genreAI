@@ -1,0 +1,16 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+models/
+!models/feature_columns.pkl
+!models/label_encoder.pkl
+!models/scaler.pkl

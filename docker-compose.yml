@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: ./backend
+    container_name: genre_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+      - MODEL_VERSION=v1
+    volumes:
+      - ./backend/models:/app/models
+    restart: always
+
+  frontend:
+    build: ./frontend
+    container_name: genre_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: always

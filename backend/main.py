@@ -1,125 +1,131 @@
-import os
-import pickle
-import pandas as pd
-import numpy as np
-import shutil
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
-from pydantic import BaseModel
-from typing import Dict, Any
+import logging
+import io
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from feature_extractor import extract_features
+from pydantic import BaseModel
+from typing import Dict
+from config import settings
+from services import ModelService, get_model_service
 
-app = FastAPI(title="Music Genre Predictor")
+# Configure Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
-# Allow CORS for React frontend
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION
+)
+
+# Allow CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=settings.ALLOWED_ORIGINS, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+class FeatureInput(BaseModel):
+    features: Dict[str, float]
 
 @app.middleware("http")
 async def limit_upload_size(request: Request, call_next):
     if request.method == "POST" and request.url.path == "/predict":
         content_length = request.headers.get("content-length")
-        if not content_length:
-            return await call_next(request) # Fallback if header missing but usually required for files
-        if int(content_length) > MAX_FILE_SIZE:
-            raise HTTPException(status_code=413, detail="File too large (Max 10MB)")
+        if content_length and int(content_length) > settings.MAX_FILE_SIZE:
+            logger.warning(f"File upload attempt exceeded max size: {content_length}")
+            raise HTTPException(status_code=413, detail=f"File too large (Max {settings.MAX_FILE_SIZE // (1024*1024)}MB)")
     return await call_next(request)
 
-# Global variables for models
-model = None
-scaler = None
-label_encoder = None
-feature_columns = None
-
-# Load models on startup
-@app.on_event("startup")
-def load_artifacts():
-    global model, scaler, label_encoder, feature_columns
-    try:
-        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "models"))
-        
-        with open(os.path.join(base_path, "best_model.pkl"), "rb") as f:
-            model = pickle.load(f)
-        
-        with open(os.path.join(base_path, "scaler.pkl"), "rb") as f:
-            scaler = pickle.load(f)
-            
-        with open(os.path.join(base_path, "label_encoder.pkl"), "rb") as f:
-            label_encoder = pickle.load(f)
-            
-        with open(os.path.join(base_path, "feature_columns.pkl"), "rb") as f:
-            feature_columns = pickle.load(f)
-            
-        print("All artifacts loaded successfully.")
-        
-    except Exception as e:
-        print(f"Error loading artifacts: {e}")
-        pass
-
 @app.get("/")
-def home():
-    return {"status": "healthy", "message": "Genre Prediction API is running."}
+def health_check(service: ModelService = Depends(get_model_service)):
+    """
+    Enhanced health check (Fix #12)
+    """
+    if not service.is_ready():
+        return {
+            "status": "degraded", 
+            "message": "Model artifacts not loaded.",
+            "version": settings.VERSION
+        }
+    return {
+        "status": "healthy", 
+        "message": "Genre Prediction API is fully operational.",
+        "version": settings.VERSION
+    }
 
 @app.post("/predict")
-async def predict(file: UploadFile = File(...)):
-    if not model or not scaler or not feature_columns:
-        raise HTTPException(status_code=500, detail="Models not loaded properly.")
+def predict(
+    file: UploadFile = File(...),
+    service: ModelService = Depends(get_model_service)
+):
+    """
+    Predicts genre from uploaded audio file.
+    """
+    # FIX 7: Input Validation
+    # 1. Check File Extension
+    file_ext = "".join(file.filename.split(".")[-1:]).lower()
+    if f".{file_ext}" not in settings.ALLOWED_EXTENSIONS:
+        logger.warning(f"Invalid file extension: {file_ext}")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid file extension. Allowed: {', '.join(settings.ALLOWED_EXTENSIONS)}"
+        )
+
+    # 2. Check MIME Type
+    if file.content_type not in settings.ALLOWED_MIME_TYPES:
+        logger.warning(f"Invalid MIME type: {file.content_type}")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid file type ({file.content_type}). Please upload a valid audio file."
+        )
+
+    if not service.is_ready():
+        raise HTTPException(status_code=503, detail="Model service is not ready.")
     
-    # Save temp file
-    temp_filename = f"temp_{file.filename}"
+    logger.info(f"Processing prediction for: {file.filename} ({file.content_type})")
+
     try:
-        with open(temp_filename, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        features = extract_features(temp_filename, duration=3)
+        # Read file in-memory
+        content = file.file.read()
+        audio_stream = io.BytesIO(content)
         
-        if features is None:
-             raise HTTPException(status_code=400, detail="Could not process audio file.")
-
-        ordered_data = []
-        for col in feature_columns:
-            ordered_data.append(features.get(col, 0))
-
-        data_array = np.array([ordered_data])
-        scaled_data = scaler.transform(data_array)
+        # Delegate to service
+        result = service.predict(audio_stream, file.filename)
+        return result
         
-        prediction_idx = model.predict(scaled_data)[0]
-        prediction_label = label_encoder.inverse_transform([prediction_idx])[0] if label_encoder else str(prediction_idx)
-
-        all_probabilities = {}
-        confidence = 0.0
-        
-        if hasattr(model, "predict_proba"):
-            probs = model.predict_proba(scaled_data)[0]
-            if label_encoder:
-                classes = label_encoder.classes_
-                for i, prob in enumerate(probs):
-                    all_probabilities[str(classes[i])] = float(prob)
-                confidence = all_probabilities.get(prediction_label, 0.0)
-        
-        if not all_probabilities:
-            confidence = 1.0
-            all_probabilities = {prediction_label: 1.0}
-            
-        return {
-            "predicted_genre": prediction_label,
-            "confidence": confidence,
-            "all_probabilities": all_probabilities
-        }
-        
+    except ValueError as e:
+        logger.error(f"Validation error during prediction: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+        logger.error(f"Prediction error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An error occurred during audio analysis.")
     finally:
-        if os.path.exists(temp_filename):
-            os.remove(temp_filename)
+        file.file.close()
+
+@app.post("/predict/features")
+def predict_features(
+    input_data: FeatureInput,
+    service: ModelService = Depends(get_model_service)
+):
+    """
+    Predicts genre from raw feature JSON.
+    """
+    if not service.is_ready():
+        raise HTTPException(status_code=503, detail="Model service is not ready.")
+        
+    logger.info("Processing feature-based prediction")
+    
+    try:
+        result = service.predict_from_features(input_data.features)
+        return result
+    except Exception as e:
+        logger.error(f"Feature prediction error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An error occurred during feature analysis.")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

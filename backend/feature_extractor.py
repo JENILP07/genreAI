@@ -1,24 +1,38 @@
 import librosa
 import numpy as np
 import warnings
+import io
 
-def extract_features(audio_path, duration=3):
+def extract_features(audio_input, duration=3):
     """
-    Extracts 58 features from an audio file, matching the structure of the training data.
+    Extracts 58 features from an audio file (path or file-like object).
+    Matches the structure of the training data.
+    
+    Args:
+        audio_input (str or file-like): Path to audio file or file-like object (BytesIO).
+        duration (int): Duration in seconds to analyze.
+        
+    Returns:
+        dict: Dictionary of extracted features, or None if extraction fails.
     """
     try:
-        # Load audio (load 30 seconds to be safe, or just specific duration)
-        # The training data 'features_3_sec.csv' suggests 3-second chunks were used.
-        # However, for a single prediction, we might want to analyze the whole file or a representative chunk.
-        # Let's standardize on 3 seconds to match the likely training window, 
-        # or we could compute over the whole file if the model expects that.
-        # Given 'features_3_sec.csv' exists, the model is likely trained on 3s clips.
-        # Let's verify 'length' feature in the next step.
+        # Load audio
+        # librosa.load accepts file paths or file-like objects
+        target_sr = 22050
         
-        y, sr = librosa.load(audio_path, duration=duration)
+        # If input is BytesIO, we might need to reset pointer if reused, 
+        # but here it's consumed once.
+        y, sr = librosa.load(audio_input, duration=duration, sr=target_sr)
+        
+        # Ensure consistent length (pad if too short)
+        target_length = int(duration * target_sr)
+        if len(y) < target_length:
+            y = np.pad(y, (0, target_length - len(y)), 'constant')
+        elif len(y) > target_length:
+            y = y[:target_length]
         
         # Features to extract
-        # 1. length (number of samples) - though this might be fixed in training data
+        # 1. length (number of samples)
         length = len(y)
         
         # 2. Chroma STFT
@@ -52,7 +66,6 @@ def extract_features(audio_path, duration=3):
         zcr_var = np.var(zcr)
         
         # 8. Harmony and Perceptrual
-        # Librosa 0.10+ uses different separation, but hpss is standard
         y_harm, y_perc = librosa.effects.hpss(y)
         harmony_mean = np.mean(y_harm)
         harmony_var = np.var(y_harm)
@@ -60,8 +73,6 @@ def extract_features(audio_path, duration=3):
         perceptr_var = np.var(y_perc)
         
         # 9. Tempo
-        # librosa.beat.beat_track returns (tempo, beats)
-        # In newer librosa, tempo is a float. In older, it might be an array.
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
         if isinstance(tempo, np.ndarray):
              tempo = tempo[0]
@@ -97,5 +108,7 @@ def extract_features(audio_path, duration=3):
         return features
 
     except Exception as e:
+        # We will let the caller handle logging, or print here for now 
+        # (Fix 6 will update this to proper logging)
         print(f"Error extracting features: {e}")
         return None

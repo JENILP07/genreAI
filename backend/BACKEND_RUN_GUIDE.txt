@@ -1,46 +1,78 @@
 # Backend Run Guide - Music Genre Prediction
 
-This guide provides instructions on how to run the FastAPI backend.
+This guide provides instructions on how to set up, train, and run the FastAPI backend.
+
+## Prerequisites
+- Python 3.10 or higher
+- GTZAN Dataset (or similar audio data structured by genre folders)
+
+---
 
 ## Option 1: Running with Python (Local Development)
 
-1. Navigate to the backend directory:
-   cd backend
+### 1. Setup Environment
+Navigate to the backend directory and create a virtual environment:
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+```
 
-2. Create a virtual environment:
-   python -m venv venv
+### 2. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
 
-3. Activate the virtual environment:
-   - Linux/macOS: source venv/bin/activate
-   - Windows: venv\Scripts\activate
+### 3. Configuration
+Copy the example environment file and adjust if necessary:
+```bash
+cp .env.example .env
+```
+*Note: The `MODEL_VERSION` in `.env` must match the version used during training.*
 
-4. Install dependencies:
-   pip install -r requirements.txt
+### 4. Train the Model (Required)
+The project requires model artifacts to function. Train the model using your dataset:
+```bash
+# Example if data is in a folder named 'Data' in the parent directory
+python3 train.py --dataset "../../Data/genres_original" --version v1
+```
 
-5. Start the server:
-   uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-The API will be available at: http://localhost:8000
-Documentation (Swagger UI): http://localhost:8000/docs
+### 5. Start the Server
+```bash
+# Start with auto-reload for development
+python3 main.py
+```
+- **API URL:** http://localhost:8000
+- **Health Check:** http://localhost:8000/
+- **Documentation:** http://localhost:8000/docs
 
 ---
 
-## Option 2: Running with Docker (Recommended for Production)
+## Option 2: Running with Docker
 
-1. Navigate to the backend directory:
-   cd backend
-
-2. Build the Docker image:
+1. Build the Docker image:
+   ```bash
    docker build -t genre-genius-backend .
+   ```
 
-3. Run the container:
+2. Run the container:
+   ```bash
    docker run -p 8000:8000 genre-genius-backend
-
-The API will be available at: http://localhost:8000
+   ```
+   *Note: Ensure models are trained and present in the `models/` directory before building the image.*
 
 ---
 
-## Notes
-- Ensure your ML models are present in the `backend/models/` directory.
-- The backend expects audio files via POST requests to `/predict`.
-- Maximum file size is limited to 10MB.
+## Testing
+Run the automated test suite to verify the installation:
+```bash
+pytest
+```
+
+## API Overview
+- `POST /predict`: Upload a `.wav` or `.mp3` file (max 10MB) to get a genre prediction.
+- `GET /`: Returns the health status and model version info.
+
+## Troubleshooting
+- **Model not loaded:** Check that the `.pkl` files in `backend/models/` have the correct version suffix matching your `.env` file (e.g., `best_model_v1.pkl`).
+- **Memory Errors:** Large audio files are processed in-memory. Ensure your system has sufficient RAM for 10MB+ audio buffers.

@@ -55,7 +55,7 @@ export const GenrePredictor = ({ onPredictionComplete, isLoading }: GenrePredict
       
       // Call Backend
       // NOTE: Ensure backend is running on port 8000
-      const response = await axios.post('http://localhost:8000/predict', { features });
+      const response = await axios.post('http://localhost:8000/predict/features', { features });
       
       const { predicted_genre, confidence } = response.data;
       

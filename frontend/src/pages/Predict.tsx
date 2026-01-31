@@ -48,10 +48,10 @@ const Predict = () => {
         id: crypto.randomUUID(),
         filename: acceptedFile.name,
         predictedGenre: data.predicted_genre as Genre,
-        confidence: data.confidence,
+        confidence: (data.confidence as number) * 100,
         allProbabilities: Object.entries(data.all_probabilities).map(([genre, prob]) => ({
           genre: genre as Genre,
-          probability: prob as number,
+          probability: (prob as number) * 100,
         })),
         timestamp: new Date(),
         duration: 30,
