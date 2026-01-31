@@ -1,3 +1,4 @@
+from typing import Any
 import os
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,7 +15,7 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     # CORS
-    ALLOWED_ORIGINS: list[str] = ["*"]
+    ALLOWED_ORIGINS: Any = ["*"]
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
