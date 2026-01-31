@@ -1,5 +1,5 @@
 import os
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -15,6 +15,19 @@ class Settings(BaseSettings):
 
     # CORS
     ALLOWED_ORIGINS: list[str] = ["*"]
+
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, v):
+        if isinstance(v, str):
+            if v.strip().startswith("["):  # It's likely a JSON array string
+                import json
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    pass # Fallback to split if json fails
+            return [origin.strip() for origin in v.split(",")]
+        return v
 
     # Audio Parameters
     SAMPLE_RATE: int = 22050
