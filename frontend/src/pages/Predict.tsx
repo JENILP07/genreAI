@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navbar } from '@/components/Navbar';
@@ -10,9 +10,12 @@ import { PredictionResults } from '@/components/PredictionResults';
 import { GenrePredictor } from '@/components/GenrePredictor';
 import { savePrediction } from '@/lib/mockPrediction';
 import { Prediction, Genre } from '@/lib/types';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Lock, Unlock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { useTheme } from '@/components/ThemeProvider';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 type Stage = 'upload' | 'processing' | 'results';
 type InputMode = 'file' | 'json';
@@ -26,6 +29,12 @@ const Predict = () => {
   const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  
+  const { setPrediction: setThemePrediction, isLocked, setIsLocked } = useTheme();
+
+  useEffect(() => {
+    setThemePrediction(prediction);
+  }, [prediction, setThemePrediction]);
 
   const handleFileAccepted = async (acceptedFile: File) => {
     setFile(acceptedFile);
@@ -49,10 +58,12 @@ const Predict = () => {
         filename: acceptedFile.name,
         predictedGenre: data.predicted_genre as Genre,
         confidence: (data.confidence as number) * 100,
-        allProbabilities: Object.entries(data.all_probabilities).map(([genre, prob]) => ({
-          genre: genre as Genre,
-          probability: (prob as number) * 100,
-        })),
+        allProbabilities: Object.entries(data.all_probabilities)
+          .map(([genre, prob]) => ({
+            genre: genre as Genre,
+            probability: (prob as number) * 100,
+          }))
+          .sort((a, b) => b.probability - a.probability),
         timestamp: new Date(),
         duration: 30,
         fileSize: acceptedFile.size
@@ -91,7 +102,8 @@ const Predict = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative overflow-hidden">
+      <div className="page-overlay" />
       <Navbar />
       
       <main className="pt-24 pb-16">
@@ -100,8 +112,21 @@ const Predict = () => {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-center mb-12"
+              className="text-center mb-12 relative"
             >
+              <div className="absolute right-0 top-0 hidden md:flex items-center gap-2 bg-card/50 px-3 py-1.5 rounded-full border border-white/10 backdrop-blur-sm">
+                <Switch 
+                  id="theme-lock" 
+                  checked={isLocked} 
+                  onCheckedChange={setIsLocked}
+                  className="scale-75"
+                />
+                <Label htmlFor="theme-lock" className="text-xs cursor-pointer flex items-center gap-1">
+                  {isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                  Lock Theme
+                </Label>
+              </div>
+
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-card mb-4">
                 <Sparkles className="w-4 h-4 text-primary" />
                 <span className="text-sm text-muted-foreground">AI Genre Prediction</span>

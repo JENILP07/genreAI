@@ -48,8 +48,11 @@
     --genre-reggae: 140 70% 45%;
     --genre-rock: 0 75% 55%;
 
+    /* Dynamic Theme Variable */
+    --genre-bg-tint: 240 15% 6%;
+
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(252 87% 67%) 0%, hsl(280 85% 65%) 50%, hsl(320 85% 60%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--accent)) 100%);
     --gradient-hero: linear-gradient(135deg, hsl(240 15% 6%) 0%, hsl(252 40% 15%) 50%, hsl(280 30% 12%) 100%);
     --gradient-card: linear-gradient(145deg, hsl(240 12% 12%) 0%, hsl(240 12% 8%) 100%);
     --gradient-glow: radial-gradient(ellipse at center, hsl(252 87% 67% / 0.15) 0%, transparent 70%);
@@ -83,9 +86,24 @@
   .font-mono {
     font-family: 'JetBrains Mono', monospace;
   }
+  
+  /* Smooth theme transitions */
+  @media (prefers-reduced-motion: no-preference) {
+    *, ::before, ::after {
+      transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+      transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+      transition-duration: 300ms;
+    }
+  }
 }
 
 @layer components {
+  .page-overlay {
+    @apply fixed inset-0 pointer-events-none z-[-1];
+    background: radial-gradient(circle at center, hsl(var(--genre-bg-tint) / 0.15) 0%, transparent 70%);
+    transition: background 500ms ease-in-out;
+  }
+
   .glass-card {
     @apply bg-card/60 backdrop-blur-xl border border-white/10 rounded-xl;
     box-shadow: var(--shadow-card);
